@@ -58,6 +58,15 @@
       </div>
 
       <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-700">
+          <span id="sync-status-dot" class="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse" title="Vérification connexion..."></span>
+          <span id="sync-status-text" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sync...</span>
+        </div>
+
+        <button onclick="window.fetchCloudState()" title="Rafraîchir les données" class="bg-slate-800 hover:bg-slate-700 text-sncf-yellow p-2 rounded-lg border border-slate-700 transition flex items-center gap-1 text-xs">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          <span class="hidden sm:inline font-bold">Actualiser</span>
+        </button>
         <div id="current-clock" class="text-2xl sm:text-5xl font-mono font-bold text-sncf-yellow tracking-wider sncf-text-shadow">
           12:00:00
         </div>
@@ -144,7 +153,38 @@
     };
 
     window.fetchCloudState = function() {
-      fetch(`https://api.jsonbin.io/v3/b/${CLOUD_BIN_ID}/latest`)
+      const refreshBtn = document.querySelector('[data-lucide="refresh-cw"]');
+      const syncDot = document.getElementById('sync-status-dot');
+      const syncText = document.getElementById('sync-status-text');
+
+      if (refreshBtn) refreshBtn.classList.add('animate-spin');
+
+      // Vérification d'abord dans le localStorage local
+      const localSaved = localStorage.getItem('sncf_trains');
+      if (localSaved) {
+        try {
+          const parsedLocal = JSON.parse(localSaved);
+          if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+            trains = parsedLocal;
+            const savedStation = localStorage.getItem('sncf_station_name');
+            if (savedStation) document.getElementById('station-name-display').textContent = savedStation;
+            const savedMarquee = localStorage.getItem('sncf_marquee_messages');
+            if (savedMarquee) marqueeMessages = JSON.parse(savedMarquee);
+            const savedMode = localStorage.getItem('sncf_current_mode');
+            if (savedMode && savedMode !== currentMode) {
+              currentMode = savedMode;
+              document.getElementById('mode-title').textContent = currentMode === 'DEPARTS' ? 'DÉPARTS' : 'ARRIVÉES';
+              document.getElementById('th-destination-provenance').textContent = currentMode === 'DEPARTS' ? 'Destination' : 'Provenance';
+            }
+            window.renderBoard();
+            if (syncDot) syncDot.className = "w-2.5 h-2.5 rounded-full bg-sncf-green";
+            if (syncText) syncText.textContent = "Direct";
+          }
+        } catch(e) {}
+      }
+
+      // Requête réseau distante avec anti-cache pour le mobile
+      fetch(`https://api.jsonbin.io/v3/b/${CLOUD_BIN_ID}/latest?t=${Date.now()}&nocache=${Math.random()}`)
         .then(res => res.json())
         .then(data => {
           if (!data || !data.record) return;
@@ -160,8 +200,17 @@
             document.getElementById('th-destination-provenance').textContent = currentMode === 'DEPARTS' ? 'Destination' : 'Provenance';
           }
           window.renderBoard();
+          if (syncDot) syncDot.className = "w-2.5 h-2.5 rounded-full bg-sncf-green";
+          if (syncText) syncText.textContent = "En Ligne";
         })
-        .catch(err => console.log('Sync Error:', err));
+        .catch(err => {
+          console.log('Sync Error:', err);
+          if (syncDot) syncDot.className = "w-2.5 h-2.5 rounded-full bg-sncf-orange";
+          if (syncText) syncText.textContent = "Hors-Ligne";
+        })
+        .finally(() => {
+          if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+        });
     };
 
     window.updateMarqueeDisplay = function() {
@@ -209,7 +258,8 @@
 
     window.onload = function() {
       window.fetchCloudState();
-      setInterval(window.fetchCloudState, 2000);
+      // Vérification ultra-rapide toutes les 1 seconde (1000ms)
+      setInterval(window.fetchCloudState, 1000);
       updateClock();
       setInterval(updateClock, 1000);
       window.startMarqueeRotation();
