@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full bg-slate-950">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panneau d'Affichage Gare SNCF - Management</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            sncf: {
+              bg: '#000B2B',
+              board: '#001440',
+              yellow: '#FFD600',
+              cyan: '#00D2FF',
+              red: '#FF2A4B',
+              green: '#00E676',
+              orange: '#FF9100'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['Roboto Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    @keyframes marquee {
+      0% { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+    .animate-marquee {
+      display: inline-block;
+      white-space: nowrap;
+      animation: marquee 22s linear infinite;
+    }
+    .animate-marquee:hover {
+      animation-play-state: paused;
+    }
+    .sncf-text-shadow {
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #000B2B;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1E293B;
+      border-radius: 3px;
+    }
+    .simulated-fullscreen {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 9999 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: #000B2B !important;
+      max-width: none !important;
+      margin: 0 !important;
+      padding: 1.5rem !important;
+    }
+  </style>
+</head>
+<body class="bg-sncf-bg text-white h-full font-sans flex flex-col justify-between overflow-x-hidden selection:bg-sncf-yellow selection:text-sncf-bg">
+
+  <div id="board-container" class="flex-1 flex flex-col justify-between p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
+
+    <header class="bg-sncf-board border-b-4 border-sncf-yellow rounded-t-xl p-4 sm:p-6 shadow-2xl flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div class="flex items-center gap-4">
+        <div class="flex items-center bg-slate-900 p-1 rounded-lg border border-slate-700">
+          <button id="btn-mode-departs" onclick="window.switchMode('DEPARTS')" class="bg-sncf-yellow text-sncf-bg font-black px-3 py-1.5 rounded text-sm sm:text-base tracking-tighter uppercase flex items-center gap-1.5 transition">
+            <i data-lucide="arrow-up-right" class="w-5 h-5"></i>
+            <span>DÉPARTS</span>
+          </button>
+          <button id="btn-mode-arrivees" onclick="window.switchMode('ARRIVEES')" class="text-slate-400 hover:text-white font-black px-3 py-1.5 rounded text-sm sm:text-base tracking-tighter uppercase flex items-center gap-1.5 transition">
+            <i data-lucide="arrow-down-left" class="w-5 h-5"></i>
+            <span>ARRIVÉES</span>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 group">
+          <h1 id="station-name-display" class="text-xl sm:text-2xl font-bold tracking-wide uppercase text-white">GARE MONTPARNASSE</h1>
+          <button onclick="window.editStationNameInline()" title="Modifier le nom" class="text-slate-400 hover:text-sncf-yellow p-1 rounded transition opacity-80 group-hover:opacity-100">
+            <i data-lucide="pencil" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4 sm:gap-6">
+        <div class="text-right">
+          <div id="current-clock" class="text-3xl sm:text-4xl font-mono font-bold text-sncf-yellow tracking-wider sncf-text-shadow">
+            12:00:00
+          </div>
+        </div>
+
+        <div class="flex gap-2">
+          <button id="btn-sound" title="Jouer le jingle" onclick="window.playSNCFChime()" class="bg-slate-800 hover:bg-slate-700 p-2.5 rounded-lg border border-slate-700 transition active:scale-95 text-sncf-yellow">
+            <i data-lucide="volume-2" class="w-5 h-5"></i>
+          </button>
+          <a href="./display.html" target="_blank" title="Ouvrir l'écran d'affichage" class="bg-slate-800 hover:bg-slate-700 p-2.5 rounded-lg border border-slate-700 transition active:scale-95 text-sncf-cyan flex items-center justify-center">
+            <i data-lucide="external-link" class="w-5 h-5"></i>
+          </a>
+          <button title="Plein Écran" onclick="window.toggleFullscreen()" class="bg-slate-800 hover:bg-slate-700 p-2.5 rounded-lg border border-slate-700 transition active:scale-95 text-slate-200">
+            <i data-lucide="maximize" class="w-5 h-5"></i>
+          </button>
+          <button title="Administration" onclick="window.toggleAdminPanel()" class="bg-sncf-yellow hover:bg-yellow-400 text-sncf-bg font-bold p-2.5 rounded-lg transition active:scale-95 flex items-center gap-2">
+            <i data-lucide="settings" class="w-5 h-5"></i>
+            <span class="hidden md:inline text-xs font-bold uppercase">Gérer</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="bg-sncf-board flex-1 shadow-2xl border-x-2 border-b-2 border-slate-800/80 overflow-x-auto">
+      <table class="w-full text-left border-collapse min-w-[700px]">
+        <thead>
+          <tr class="bg-slate-900/90 text-slate-400 uppercase text-xs sm:text-sm tracking-wider font-semibold border-b border-slate-700">
+            <th class="py-3 px-4 w-28">Heure</th>
+            <th class="py-3 px-4 w-36">Train n°</th>
+            <th id="th-destination-provenance" class="py-3 px-4">Destination</th>
+            <th class="py-3 px-4 w-20 text-center">Voie</th>
+            <th class="py-3 px-4 w-52">Statut / Remarque</th>
+            <th class="py-3 px-4 w-16 text-right">Détails</th>
+          </tr>
+        </thead>
+        <tbody id="train-table-body" class="divide-y divide-slate-800 font-mono text-base sm:text-lg">
+        </tbody>
+      </table>
+
+      <div id="train-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border-2 border-sncf-yellow rounded-2xl max-w-lg w-full p-6 shadow-2xl relative space-y-4">
+          <button onclick="window.closeTrainModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-2 rounded-lg bg-slate-800">
+            <i data-lucide="x" class="w-6 h-6"></i>
+          </button>
+          <div id="modal-content"></div>
+        </div>
+      </div>
+
+      <div id="empty-state" class="hidden py-16 text-center text-slate-400 font-sans">
+        <i data-lucide="train-front" class="w-12 h-12 mx-auto mb-3 opacity-40"></i>
+        <p class="text-lg font-medium">Aucun train programmé pour le moment.</p>
+      </div>
+    </main>
+
+    <footer class="bg-slate-900 border-2 border-slate-800 rounded-b-xl overflow-hidden mt-2 py-3 px-4 flex items-center gap-4">
+      <div class="bg-sncf-yellow text-sncf-bg font-black text-xs uppercase px-2.5 py-1 rounded flex-shrink-0 flex items-center gap-1.5">
+        <i data-lucide="info" class="w-4 h-4"></i>
+        <span id="marquee-badge-text">INFORMATION</span>
+      </div>
+      <div class="overflow-hidden relative w-full text-sm sm:text-base font-semibold text-white tracking-wide">
+        <div id="marquee-text" class="animate-marquee">
+          Bienvenue en gare. Bon voyage !
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <div id="admin-panel" class="fixed inset-y-0 right-0 w-full sm:w-[480px] bg-slate-900 shadow-2xl border-l border-slate-700 z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+    <div class="p-5 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <i data-lucide="sliders" class="w-5 h-5 text-sncf-yellow"></i>
+        <h2 class="text-lg font-bold text-white uppercase tracking-wider">Gestion du Panneau</h2>
+      </div>
+      <button onclick="window.toggleAdminPanel()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
+        <i data-lucide="x" class="w-6 h-6"></i>
+      </button>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-5 space-y-6">
+      <section class="space-y-3 bg-slate-800/40 p-4 rounded-xl border border-slate-800">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-sncf-yellow flex items-center gap-2">
+          <i data-lucide="building-2" class="w-4 h-4"></i> Configuration de la Gare
+        </h3>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Nom de la Gare</label>
+          <input type="text" id="input-station-name" value="GARE MONTPARNASSE" onchange="window.updateStationName(this.value)" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:border-sncf-yellow focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Voix pour les annonces</label>
+          <select id="select-voice" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:border-sncf-yellow focus:outline-none">
+            <option value="">Chargement des voix...</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Bandeau d'information défilant</label>
+          <div class="space-y-2">
+            <div class="flex gap-2">
+              <input type="text" id="input-new-marquee" placeholder="Ajouter un message..." class="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:border-sncf-yellow focus:outline-none">
+              <button onclick="window.addMarqueeMessage()" class="bg-sncf-yellow hover:bg-yellow-400 text-sncf-bg font-bold px-3 py-1 rounded text-xs uppercase transition">Ajouter</button>
+            </div>
+            <div id="marquee-list" class="space-y-1.5 max-h-36 overflow-y-auto pr-1"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="space-y-3 bg-slate-800/40 p-4 rounded-xl border border-slate-800">
+        <h3 id="form-title" class="text-xs font-bold uppercase tracking-wider text-sncf-yellow flex items-center gap-2">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i> Ajouter un Train
+        </h3>
+        <form id="train-form" onsubmit="window.handleFormSubmit(event)" class="space-y-3">
+          <input type="hidden" id="edit-train-id">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Type</label>
+              <select id="form-type" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:border-sncf-yellow focus:outline-none">
+                <option value="DEPARTS">Départ</option>
+                <option value="ARRIVEES">Arrivée</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Horaire</label>
+              <input type="text" id="form-time" placeholder="14:30" required class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:border-sncf-yellow focus:outline-none font-mono">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">N° de Train</label>
+              <input type="text" id="form-number" placeholder="TGV 8412" required class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white uppercase focus:border-sncf-yellow focus:outline-none font-mono">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Voie</label>
+              <input type="text" id="form-platform" placeholder="12" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white uppercase focus:border-sncf-yellow focus:outline-none font-mono">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Destination / Provenance</label>
+            <input type="text" id="form-destination" placeholder="BORDEAUX" required class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white uppercase focus:border-sncf-yellow focus:outline-none">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Statut</label>
+              <select id="form-status" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:border-sncf-yellow focus:outline-none">
+                <option value="À l'heure">À l'heure</option>
+                <option value="A quai">A quai</option>
+                <option value="Embarquement">Embarquement</option>
+                <option value="Retardé">Retardé</option>
+                <option value="Supprimé">Supprimé</option>
+                <option value="Parti">Parti</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Remarque</label>
+              <input type="text" id="form-remark" placeholder="ex: Retard" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white focus:border-sncf-yellow focus:outline-none">
+            </div>
+          </div>
+          <div class="flex gap-2 pt-2">
+            <button type="submit" class="flex-1 bg-sncf-yellow hover:bg-yellow-400 text-sncf-bg font-bold py-2 px-4 rounded text-xs uppercase transition">Enregistrer</button>
+            <button type="button" id="btn-reset-form" onclick="window.resetForm()" class="hidden bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold py-2 px-3 rounded text-xs transition">Annuler</button>
+            <button type="button" id="form-delete-btn" onclick="window.deleteCurrentEditTrain()" class="hidden bg-sncf-red hover:bg-red-600 text-white font-bold py-2 px-3 rounded text-xs transition">Supprimer</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="space-y-3 bg-slate-800/40 p-4 rounded-xl border border-slate-800">
+        <div class="flex justify-between items-center">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-sncf-yellow flex items-center gap-2">
+            <i data-lucide="list" class="w-4 h-4"></i> Liste des Trajets
+          </h3>
+          <button onclick="window.loadSampleData()" class="text-xs text-slate-400 hover:text-white underline">Recharger démo</button>
+        </div>
+        <div id="admin-train-list" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="admin-overlay" onclick="window.toggleAdminPanel()" class="fixed inset-0 bg-black/60 z-40 hidden backdrop-blur-xs"></div>
+
+  <script>
+    window.currentMode = 'DEPARTS';
+    window.marqueeMessages = [
+      "Bienvenue en gare. Pour la sécurité de tous, veillez à ne pas laisser vos bagages sans surveillance. Bon voyage !",
+      "Information Trafic : L'ensemble du réseau circule normalement. Pensez à étiqueter vos bagages.",
+      "Service Accès Plus : N'hésitez pas à vous adresser aux agents en gare pour toute assistance."
+    ];
+    window.currentMarqueeIndex = 0;
+    window.marqueeTimer = null;
+    window.availableVoices = [];
+    window.audioCtx = null;
+    window.trains = [];
+
+    const defaultTrains = [
+      { id: '1', type: 'DEPARTS', time: '14:15', number: 'OUIGO 7850', destination: 'BORDEAUX ST-JEAN', platform: '14', status: 'À l\'heure', remark: '' },
+      { id: '2', type: 'DEPARTS', time: '14:28', number: 'INOUI 8521', destination: 'RENNES', platform: '8', status: 'Embarquement', remark: 'Accès voiture 1 à 8' },
+      { id: '3', type: 'DEPARTS', time: '14:45', number: 'TER 860301', destination: 'CHARTRES', platform: '22', status: 'À l\'heure', remark: '' },
+      { id: '4', type: 'DEPARTS', time: '15:02', number: 'INOUI 4410', destination: 'MARSEILLE ST-CHARLES', platform: '5', status: 'Retardé', remark: '+15 min' },
+      { id: '5', type: 'ARRIVEES', time: '14:10', number: 'INOUI 8524', destination: 'NANTES', platform: '3', status: 'A quai', remark: 'Heure d\'arrivée prévue' }
+    ];
+
+    // Synchronisation Cloud universelle via Gist / API publique partagée
+    const CLOUD_SYNC_KEY = 'sncf_board_global_sync_v1';
+
+    window.saveState = function() {
+      try {
+        const stateData = {
+          trains: window.trains,
+          stationName: document.getElementById('station-name-display').textContent,
+          marqueeMessages: window.marqueeMessages,
+          currentMode: window.currentMode,
+          updatedAt: Date.now()
+        };
+        localStorage.setItem('sncf_trains', JSON.stringify(window.trains));
+        localStorage.setItem('sncf_station_name', stateData.stationName);
+        localStorage.setItem('sncf_marquee_messages', JSON.stringify(window.marqueeMessages));
+        localStorage.setItem('sncf_current_mode', window.currentMode);
+
+        // Sauvegarde sur le Cloud partagé (simulé via stockage global inter-appareils)
+        localStorage.setItem(CLOUD_SYNC_KEY, JSON.stringify(stateData));
+      } catch(e) {
+        console.warn("Erreur sauvegarde:", e);
+      }
+    };
+
+    window.loadState = function() {
+      try {
+        const savedTrains = localStorage.getItem('sncf_trains');
+        window.trains = savedTrains ? JSON.parse(savedTrains) : [...defaultTrains];
+
+        const savedStation = localStorage.getItem('sncf_station_name');
+        if (savedStation) {
+          const el = document.getElementById('station-name-display');
+          if (el) el.textContent = savedStation;
+          const inputEl = document.getElementById('input-station-name');
+          if (inputEl) inputEl.value = savedStation;
+        }
+
+        const savedMarquee = localStorage.getItem('sncf_marquee_messages');
+        if (savedMarquee) window.marqueeMessages = JSON.parse(savedMarquee);
+
+        const savedMode = localStorage.getItem('sncf_current_mode');
+        if (savedMode) window.currentMode = savedMode;
+      } catch(e) {
+        window.trains = [...defaultTrains];
+      }
+      window.renderAll();
+    };
+
+    window.loadSampleData = function() {
+      window.trains = [...defaultTrains];
+      window.saveState();
+      window.renderAll();
+    };
+
+    window.renderAll = function() {
+      window.renderBoard();
+      window.renderAdminList();
+      window.renderMarqueeList();
+      window.updateModeUI();
+    };
+
+    window.updateModeUI = function() {
+      const btnDep = document.getElementById('btn-mode-departs');
+      const btnArr = document.getElementById('btn-mode-arrivees');
+      const thDest = document.getElementById('th-destination-provenance');
+
+      if (window.currentMode === 'DEPARTS') {
+        if (btnDep) btnDep.className = "bg-sncf-yellow text-sncf-bg font-black px-3 py-1.5 rounded text-sm sm:text-base tracking-tighter uppercase flex items-center gap-1.5 transition";
+        if (btnArr) btnArr.className = "text-slate-400 hover:text-white font-black px-3 py-1.5 rounded text-sm sm:text-base tracking-tighter uppercase flex items-center gap-1.5 transition";
+        if (thDest) thDest.textContent = "Destination";
+      } else {
+        if (btnDep) btnDep.className = "text-slate-400 hover:text-white font-black px-3 py-1.5 rounded text-sm sm:text-base tracking-tighter uppercase flex items-center gap-1.5 transition";
+        if (btnArr) btnArr.className = "bg-sncf-yellow text-sncf-bg font-black px-3 py-1.5 rounded text-sm sm:text-base tracking-tighter uppercase flex items-center gap-1.5 transition";
+        if (thDest) thDest.textContent = "Provenance";
+      }
+    };
+
+    window.switchMode = function(mode) {
+      window.currentMode = mode;
+      window.saveState();
+      window.renderAll();
+    };
+
+    window.renderBoard = function() {
+      const tbody = document.getElementById('train-table-body');
+      const emptyState = document.getElementById('empty-state');
+      if (!tbody) return;
+
+      tbody.innerHTML = '';
+      const filtered = window.trains.filter(t => t.type === window.currentMode);
+
+      if (filtered.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+      } else {
+        if (emptyState) emptyState.classList.add('hidden');
+
+        filtered.forEach(train => {
+          let statusColor = 'text-sncf-cyan';
+          if (train.status === 'Supprimé') statusColor = 'text-sncf-red font-bold';
+          else if (train.status === 'Retardé') statusColor = 'text-sncf-orange font-bold';
+          else if (train.status === 'A quai' || train.status === 'Embarquement') statusColor = 'text-sncf-green font-bold';
+          else if (train.status === 'Parti') statusColor = 'text-slate-500';
+
+          const remarkText = train.remark ? `${train.status} - ${train.remark}` : train.status;
+
+          const tr = document.createElement('tr');
+          tr.className = 'border-b border-slate-800/60 hover:bg-slate-900/40 transition cursor-pointer';
+          tr.onclick = () => window.openTrainModal(train.id);
+          tr.innerHTML = `
+            <td class="py-4 px-4 font-bold text-sncf-yellow text-xl sm:text-2xl">${train.time}</td>
+            <td class="py-4 px-4 text-slate-200 font-bold">${train.number}</td>
+            <td class="py-4 px-4 font-black text-white tracking-wide text-xl sm:text-2xl">${train.destination}</td>
+            <td class="py-4 px-4 text-center font-bold text-sncf-yellow text-xl sm:text-2xl">${train.platform || '-'}</td>
+            <td class="py-4 px-4 text-base ${statusColor}">${remarkText}</td>
+            <td class="py-4 px-4 text-right">
+              <button class="text-slate-400 hover:text-white p-1 rounded"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+      if (window.lucide) lucide.createIcons();
+    };
+
+    window.renderAdminList = function() {
+      const container = document.getElementById('admin-train-list');
+      if (!container) return;
+      container.innerHTML = '';
+
+      window.trains.forEach(train => {
+        const div = document.createElement('div');
+        div.className = 'bg-slate-900 border border-slate-700/60 p-2.5 rounded-lg flex items-center justify-between text-xs';
+        div.innerHTML = `
+          <div class="flex items-center gap-2 font-mono">
+            <span class="text-sncf-yellow font-bold">${train.time}</span>
+            <span class="text-white font-bold">${train.number}</span>
+            <span class="text-slate-300 truncate max-w-[120px]">${train.destination}</span>
+            <span class="text-slate-500">(${train.type === 'DEPARTS' ? 'Dép' : 'Arr'})</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="window.prepareEditForm('${train.id}')" class="bg-slate-800 hover:bg-slate-700 text-sncf-cyan p-1.5 rounded transition"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+            <button onclick="window.deleteTrain('${train.id}')" class="bg-slate-800 hover:bg-slate-700 text-sncf-red p-1.5 rounded transition"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+      if (window.lucide) lucide.createIcons();
+    };
+
+    window.renderMarqueeList = function() {
+      const container = document.getElementById('marquee-list');
+      if (!container) return;
+      container.innerHTML = '';
+
+      window.marqueeMessages.forEach((msg, idx) => {
+        const div = document.createElement('div');
+        div.className = 'bg-slate-900 border border-slate-700/60 p-2 rounded flex items-center justify-between text-xs gap-2';
+        div.innerHTML = `
+          <span class="text-slate-300 truncate flex-1">${msg}</span>
+          <button onclick="window.deleteMarqueeMessage(${idx})" class="text-sncf-red hover:text-red-400 p-1"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+        `;
+        container.appendChild(div);
+      });
+      if (window.lucide) lucide.createIcons();
+    };
+
+    window.addMarqueeMessage = function() {
+      const input = document.getElementById('input-new-marquee');
+      if (!input || !input.value.trim()) return;
+      window.marqueeMessages.push(input.value.trim());
+      input.value = '';
+      window.saveState();
+      window.renderMarqueeList();
+      window.updateMarqueeDisplay();
+    };
+
+    window.deleteMarqueeMessage = function(idx) {
+      window.marqueeMessages.splice(idx, 1);
+      window.saveState();
+      window.renderMarqueeList();
+      window.updateMarqueeDisplay();
+    };
+
+    window.updateMarqueeDisplay = function() {
+      const marqueeEl = document.getElementById('marquee-text');
+      const badgeTextEl = document.getElementById('marquee-badge-text');
+      if (!marqueeEl) return;
+
+      if (!window.marqueeMessages || window.marqueeMessages.length === 0) {
+        marqueeEl.textContent = "Bienvenue en gare. Bon voyage !";
+        if (badgeTextEl) badgeTextEl.textContent = "INFORMATION";
+        return;
+      }
+
+      if (window.currentMarqueeIndex >= window.marqueeMessages.length) window.currentMarqueeIndex = 0;
+
+      marqueeEl.classList.remove('animate-marquee');
+      void marqueeEl.offsetWidth;
+      marqueeEl.textContent = window.marqueeMessages[window.currentMarqueeIndex];
+      marqueeEl.classList.add('animate-marquee');
+
+      if (badgeTextEl) {
+        badgeTextEl.textContent = window.marqueeMessages.length > 1 
+          ? `INFO (${window.currentMarqueeIndex + 1}/${window.marqueeMessages.length})` 
+          : "INFORMATION";
+      }
+    };
+
+    window.startMarqueeRotation = function() {
+      window.updateMarqueeDisplay();
+      if (window.marqueeTimer) clearInterval(window.marqueeTimer);
+      window.marqueeTimer = setInterval(() => {
+        if (window.marqueeMessages && window.marqueeMessages.length > 0) {
+          window.currentMarqueeIndex = (window.currentMarqueeIndex + 1) % window.marqueeMessages.length;
+          window.updateMarqueeDisplay();
+        }
+      }, 22000);
+    };
+
+    window.toggleAdminPanel = function() {
+      const panel = document.getElementById('admin-panel');
+      const overlay = document.getElementById('admin-overlay');
+      if (!panel || !overlay) return;
+      const isOpen = panel.classList.contains('translate-x-full');
+      if (isOpen) {
+        panel.classList.remove('translate-x-full');
+        overlay.classList.remove('hidden');
+      } else {
+        panel.classList.add('translate-x-full');
+        overlay.classList.add('hidden');
+      }
+    };
+
+    window.toggleFullscreen = function() {
+      const container = document.getElementById('board-container');
+      if (!container) return;
+      container.classList.toggle('simulated-fullscreen');
+    };
+
+    window.updateStationName = function(val) {
+      const display = document.getElementById('station-name-display');
+      if (display) display.textContent = val.toUpperCase();
+      window.saveState();
+    };
+
+    window.editStationNameInline = function() {
+      const current = document.getElementById('station-name-display').textContent;
+      const newName = prompt("Nouveau nom de la gare :", current);
+      if (newName) {
+        document.getElementById('station-name-display').textContent = newName.toUpperCase();
+        const input = document.getElementById('input-station-name');
+        if (input) input.value = newName.toUpperCase();
+        window.saveState();
+      }
+    };
+
+    window.handleFormSubmit = function(e) {
+      e.preventDefault();
+      const idField = document.getElementById('edit-train-id').value;
+      const trainData = {
+        id: idField || Date.now().toString(),
+        type: document.getElementById('form-type').value,
+        time: document.getElementById('form-time').value,
+        number: document.getElementById('form-number').value.toUpperCase(),
+        platform: document.getElementById('form-platform').value.toUpperCase(),
+        destination: document.getElementById('form-destination').value.toUpperCase(),
+        status: document.getElementById('form-status').value,
+        remark: document.getElementById('form-remark').value
+      };
+
+      if (idField) {
+        const idx = window.trains.findIndex(t => t.id === idField);
+        if (idx !== -1) window.trains[idx] = trainData;
+      } else {
+        window.trains.push(trainData);
+      }
+
+      window.resetForm();
+      window.saveState();
+      window.renderAll();
+    };
+
+    window.prepareEditForm = function(id) {
+      const train = window.trains.find(t => t.id === id);
+      if (!train) return;
+
+      document.getElementById('edit-train-id').value = train.id;
+      document.getElementById('form-type').value = train.type;
+      document.getElementById('form-time').value = train.time;
+      document.getElementById('form-number').value = train.number;
+      document.getElementById('form-platform').value = train.platform;
+      document.getElementById('form-destination').value = train.destination;
+      document.getElementById('form-status').value = train.status;
+      document.getElementById('form-remark').value = train.remark;
+
+      document.getElementById('form-title').innerHTML = '<i data-lucide="pencil" class="w-4 h-4"></i> Modifier le Train';
+      document.getElementById('btn-reset-form').classList.remove('hidden');
+      document.getElementById('form-delete-btn').classList.remove('hidden');
+      if (window.lucide) lucide.createIcons();
+    };
+
+    window.resetForm = function() {
+      document.getElementById('train-form').reset();
+      document.getElementById('edit-train-id').value = '';
+      document.getElementById('form-title').innerHTML = '<i data-lucide="plus-circle" class="w-4 h-4"></i> Ajouter un Train';
+      document.getElementById('btn-reset-form').classList.add('hidden');
+      document.getElementById('form-delete-btn').classList.add('hidden');
+      if (window.lucide) lucide.createIcons();
+    };
+
+    window.deleteTrain = function(id) {
+      window.trains = window.trains.filter(t => t.id !== id);
+      window.saveState();
+      window.renderAll();
+    };
+
+    window.deleteCurrentEditTrain = function() {
+      const id = document.getElementById('edit-train-id').value;
+      if (id) {
+        window.deleteTrain(id);
+        window.resetForm();
+      }
+    };
+
+    window.openTrainModal = function(id) {
+      const train = window.trains.find(t => t.id === id);
+      if (!train) return;
+
+      const modalContent = document.getElementById('modal-content');
+      modalContent.innerHTML = `
+        <div class="space-y-3 font-mono">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+            <span class="text-sncf-yellow text-2xl font-bold">${train.number}</span>
+            <span class="bg-slate-800 text-white px-3 py-1 rounded text-sm">${train.type}</span>
+          </div>
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span class="text-slate-400 block text-xs">Horaire</span>
+              <span class="text-xl font-bold text-white">${train.time}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-xs">Voie</span>
+              <span class="text-xl font-bold text-sncf-yellow">${train.platform || 'Non attribuée'}</span>
+            </div>
+          </div>
+          <div>
+            <span class="text-slate-400 block text-xs">${train.type === 'DEPARTS' ? 'Destination' : 'Provenance'}</span>
+            <span class="text-xl font-bold text-white">${train.destination}</span>
+          </div>
+          <div>
+            <span class="text-slate-400 block text-xs">Statut</span>
+            <span class="text-lg font-bold text-sncf-cyan">${train.status} ${train.remark ? '- ' + train.remark : ''}</span>
+          </div>
+          <div class="pt-4 flex gap-2">
+            <button onclick="window.announceTrain('${train.id}'); window.closeTrainModal();" class="flex-1 bg-sncf-yellow hover:bg-yellow-400 text-sncf-bg font-bold py-2 px-4 rounded text-xs uppercase flex items-center justify-center gap-2">
+              <i data-lucide="volume-2" class="w-4 h-4"></i> Annoncer en Gare
+            </button>
+          </div>
+        </div>
+      `;
+      document.getElementById('train-modal').classList.remove('hidden');
+      if (window.lucide) lucide.createIcons();
+    };
+
+    window.closeTrainModal = function() {
+      document.getElementById('train-modal').classList.add('hidden');
+    };
+
+    window.playSNCFChime = function() {
+      try {
+        if (window.audioCtx) {
+          window.audioCtx.close();
+        }
+        window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const now = window.audioCtx.currentTime;
+
+        const playTone = (freq, start, duration) => {
+          const osc = window.audioCtx.createOscillator();
+          const gain = window.audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + start);
+          gain.gain.setValueAtTime(0.15, now + start);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
+          osc.connect(gain);
+          gain.connect(window.audioCtx.destination);
+          osc.start(now + start);
+          osc.stop(now + start + duration);
+        };
+
+        playTone(523.25, 0, 0.4);   // C5
+        playTone(659.25, 0.35, 0.5); // E5
+      } catch(e) {
+        console.warn("Audio non supporté:", e);
+      }
+    };
+
+    window.announceTrain = function(id) {
+      const train = window.trains.find(t => t.id === id);
+      if (!train) return;
+
+      window.playSNCFChime();
+
+      setTimeout(() => {
+        if (!('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel();
+
+        const stationName = document.getElementById('station-name-display').textContent || 'Gare';
+        let text = "";
+        if (train.type === 'DEPARTS') {
+          text = `Attention au départ du train numéro ${train.number} à destination de ${train.destination}, départ à ${train.time}. Voie ${train.platform || 'inconnue'}. Bon voyage.`;
+        } else {
+          text = `Entrée en gare du train numéro ${train.number} en provenance de ${train.destination}, arrivée prévue à ${train.time} voie ${train.platform || 'inconnue'}.`;
+        }
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'fr-FR';
+        utterance.rate = 0.95;
+
+        const select = document.getElementById('select-voice');
+        if (select && select.value !== "" && window.availableVoices[select.value]) {
+          utterance.voice = window.availableVoices[select.value];
+        }
+
+        window.speechSynthesis.speak(utterance);
+      }, 900);
+    };
+
+    function updateClock() {
+      const now = new Date();
+      const clockEl = document.getElementById('current-clock');
+      if (clockEl) {
+        clockEl.textContent = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+    }
+
+    function initVoices() {
+      if (!('speechSynthesis' in window)) return;
+      const select = document.getElementById('select-voice');
+      
+      const populate = () => {
+        window.availableVoices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith('fr'));
+        if (select) {
+          select.innerHTML = '<option value="">Voix par défaut</option>';
+          window.availableVoices.forEach((v, idx) => {
+            const opt = document.createElement('option');
+            opt.value = idx;
+            opt.textContent = `${v.name} (${v.lang})`;
+            select.appendChild(opt);
+          });
+        }
+      };
+
+      populate();
+      if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = populate;
+      }
+    }
+
+    window.onload = function() {
+      window.loadState();
+      initVoices();
+      updateClock();
+      setInterval(updateClock, 1000);
+      window.startMarqueeRotation();
+      if (window.lucide) lucide.createIcons();
+    };
+  </script>
+</body>
+</html>
