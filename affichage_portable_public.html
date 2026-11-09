@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full bg-slate-950 select-none">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Écran d'Affichage Gare SNCF</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            sncf: {
+              bg: '#000B2B',
+              board: '#001440',
+              yellow: '#FFD600',
+              cyan: '#00D2FF',
+              red: '#FF2A4B',
+              green: '#00E676',
+              orange: '#FF9100'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['Roboto Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes marquee {
+      0% { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+    .animate-marquee {
+      display: inline-block;
+      white-space: nowrap;
+      animation: marquee 22s linear infinite;
+    }
+    .sncf-text-shadow {
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+    }
+  </style>
+</head>
+<body class="bg-sncf-bg text-white h-full font-sans flex flex-col justify-between overflow-hidden">
+
+  <div class="flex-1 flex flex-col justify-between p-3 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
+    <header class="bg-sncf-board border-b-4 border-sncf-yellow rounded-t-xl p-3 sm:p-6 shadow-2xl flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="bg-sncf-yellow text-sncf-bg font-black px-3 py-1.5 rounded text-sm sm:text-lg tracking-tighter uppercase flex items-center gap-1.5">
+          <i data-lucide="arrow-up-right" id="mode-icon" class="w-5 h-5 sm:w-6 sm:h-6"></i>
+          <span id="mode-title">DÉPARTS</span>
+        </div>
+
+        <h1 id="station-name-display" class="text-lg sm:text-3xl font-bold tracking-wide uppercase text-white truncate max-w-[180px] sm:max-w-none">GARE MONTPARNASSE</h1>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <div id="current-clock" class="text-2xl sm:text-5xl font-mono font-bold text-sncf-yellow tracking-wider sncf-text-shadow">
+          12:00:00
+        </div>
+      </div>
+    </header>
+
+    <main class="bg-sncf-board flex-1 shadow-2xl border-x-2 border-b-2 border-slate-800/80 overflow-x-auto">
+      <table class="w-full text-left border-collapse min-w-[500px] sm:min-w-0">
+        <thead>
+          <tr class="bg-slate-900/90 text-slate-400 uppercase text-xs sm:text-sm tracking-wider font-semibold border-b border-slate-700">
+            <th class="py-3 px-3 sm:px-4 w-20 sm:w-28">Heure</th>
+            <th class="py-3 px-3 sm:px-4 w-28 sm:w-36">Train n°</th>
+            <th id="th-destination-provenance" class="py-3 px-3 sm:px-4">Destination</th>
+            <th class="py-3 px-3 sm:px-4 w-16 sm:w-20 text-center">Voie</th>
+            <th class="py-3 px-3 sm:px-4 w-40 sm:w-52">Statut / Remarque</th>
+          </tr>
+        </thead>
+        <tbody id="train-table-body" class="divide-y divide-slate-800 font-mono text-base sm:text-xl"></tbody>
+      </table>
+
+      <div id="empty-state" class="hidden py-16 sm:py-24 text-center text-slate-400 font-sans">
+        <i data-lucide="train-front" class="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 opacity-40"></i>
+        <p class="text-lg sm:text-xl font-medium">Aucun train programmé.</p>
+      </div>
+    </main>
+
+    <footer class="bg-slate-900 border-2 border-slate-800 rounded-b-xl overflow-hidden mt-2 py-2.5 px-3 sm:px-4 flex items-center gap-3">
+      <div class="bg-sncf-yellow text-sncf-bg font-black text-xs uppercase px-2 py-0.5 sm:px-2.5 sm:py-1 rounded flex-shrink-0 flex items-center gap-1">
+        <i data-lucide="info" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+        <span id="marquee-badge-text">INFO</span>
+      </div>
+      <div class="overflow-hidden relative w-full text-xs sm:text-base font-semibold text-white tracking-wide">
+        <div id="marquee-text" class="animate-marquee">
+          Bienvenue en gare. Bon voyage !
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const CLOUD_BIN_ID = "67cf395785696504a79cbb68";
+
+    let currentMode = 'DEPARTS';
+    let trains = [];
+    let marqueeMessages = [];
+    let currentMarqueeIndex = 0;
+    let marqueeTimer = null;
+
+    window.renderBoard = function() {
+      const tbody = document.getElementById('train-table-body');
+      const emptyState = document.getElementById('empty-state');
+      if (!tbody) return;
+
+      tbody.innerHTML = '';
+      const filteredTrains = trains.filter(t => t.type === currentMode);
+
+      if (filteredTrains.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+      } else {
+        if (emptyState) emptyState.classList.add('hidden');
+
+        filteredTrains.forEach((train) => {
+          let statusColor = 'text-sncf-cyan';
+          if (train.status === 'Supprimé') statusColor = 'text-sncf-red font-bold';
+          else if (train.status === 'Retardé') statusColor = 'text-sncf-orange font-bold';
+          else if (train.status === 'A quai' || train.status === 'Embarquement') statusColor = 'text-sncf-green font-bold';
+          else if (train.status === 'Parti') statusColor = 'text-slate-500';
+
+          const displayRemark = train.remark ? `${train.status} - ${train.remark}` : train.status;
+
+          const tr = document.createElement('tr');
+          tr.className = 'border-b border-slate-800/60';
+          tr.innerHTML = `
+            <td class="py-3 sm:py-4 px-3 sm:px-4 font-bold text-sncf-yellow text-lg sm:text-2xl">${train.time}</td>
+            <td class="py-3 sm:py-4 px-3 sm:px-4 text-slate-200 font-bold text-sm sm:text-base">${train.number}</td>
+            <td class="py-3 sm:py-4 px-3 sm:px-4 font-black text-white tracking-wide text-base sm:text-2xl">${train.destination}</td>
+            <td class="py-3 sm:py-4 px-3 sm:px-4 text-center font-bold text-sncf-yellow text-lg sm:text-2xl">${train.platform || '-'}</td>
+            <td class="py-3 sm:py-4 px-3 sm:px-4 text-xs sm:text-base ${statusColor}">${displayRemark}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+      if (window.lucide) lucide.createIcons();
+    };
+
+    window.fetchCloudState = function() {
+      fetch(`https://api.jsonbin.io/v3/b/${CLOUD_BIN_ID}/latest`)
+        .then(res => res.json())
+        .then(data => {
+          if (!data || !data.record) return;
+          const roomData = data.record;
+          if (roomData.trains) trains = roomData.trains;
+          if (roomData.stationName) {
+            document.getElementById('station-name-display').textContent = roomData.stationName;
+          }
+          if (roomData.marqueeMessages) marqueeMessages = roomData.marqueeMessages;
+          if (roomData.currentMode && roomData.currentMode !== currentMode) {
+            currentMode = roomData.currentMode;
+            document.getElementById('mode-title').textContent = currentMode === 'DEPARTS' ? 'DÉPARTS' : 'ARRIVÉES';
+            document.getElementById('th-destination-provenance').textContent = currentMode === 'DEPARTS' ? 'Destination' : 'Provenance';
+          }
+          window.renderBoard();
+        })
+        .catch(err => console.log('Sync Error:', err));
+    };
+
+    window.updateMarqueeDisplay = function() {
+      const marqueeEl = document.getElementById('marquee-text');
+      const badgeTextEl = document.getElementById('marquee-badge-text');
+      if (!marqueeEl) return;
+
+      if (!marqueeMessages || marqueeMessages.length === 0) {
+        marqueeEl.textContent = "Bienvenue en gare. Bon voyage !";
+        if (badgeTextEl) badgeTextEl.textContent = "INFO";
+        return;
+      }
+
+      if (currentMarqueeIndex >= marqueeMessages.length) currentMarqueeIndex = 0;
+
+      marqueeEl.classList.remove('animate-marquee');
+      void marqueeEl.offsetWidth;
+      marqueeEl.textContent = marqueeMessages[currentMarqueeIndex];
+      marqueeEl.classList.add('animate-marquee');
+
+      if (badgeTextEl) {
+        badgeTextEl.textContent = marqueeMessages.length > 1 
+          ? `INFO (${currentMarqueeIndex + 1}/${marqueeMessages.length})` 
+          : "INFORMATION";
+      }
+    };
+
+    window.startMarqueeRotation = function() {
+      window.updateMarqueeDisplay();
+      if (marqueeTimer) clearInterval(marqueeTimer);
+      marqueeTimer = setInterval(() => {
+        if (marqueeMessages && marqueeMessages.length > 0) {
+          currentMarqueeIndex = (currentMarqueeIndex + 1) % marqueeMessages.length;
+          window.updateMarqueeDisplay();
+        }
+      }, 22000);
+    };
+
+    function updateClock() {
+      const clockEl = document.getElementById('current-clock');
+      if (clockEl) {
+        clockEl.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+    }
+
+    window.onload = function() {
+      window.fetchCloudState();
+      setInterval(window.fetchCloudState, 2000);
+      updateClock();
+      setInterval(updateClock, 1000);
+      window.startMarqueeRotation();
+      if (window.lucide) lucide.createIcons();
+    };
+  </script>
+</body>
+</html>
