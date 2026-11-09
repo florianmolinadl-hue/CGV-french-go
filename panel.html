@@ -241,6 +241,12 @@
 
   <script>
     const CLOUD_BIN_ID = "67cf395785696504a79cbb68";
+    let broadcast;
+    try {
+      broadcast = new BroadcastChannel('sncf_sync_channel');
+    } catch(e) {
+      broadcast = null;
+    }
 
     window.currentMode = 'DEPARTS';
     window.marqueeMessages = [
@@ -262,22 +268,35 @@
     ];
 
     window.saveState = function() {
+      const stationElem = document.getElementById('station-name-display');
+      const stationName = stationElem ? stationElem.textContent : 'GARE MONTPARNASSE';
+
       const stateData = {
         trains: window.trains,
-        stationName: document.getElementById('station-name-display').textContent,
+        stationName: stationName,
         marqueeMessages: window.marqueeMessages,
         currentMode: window.currentMode,
         updatedAt: Date.now()
       };
 
+      // 1. Sauvegarde locale
       localStorage.setItem('sncf_trains', JSON.stringify(window.trains));
       localStorage.setItem('sncf_station_name', stateData.stationName);
       localStorage.setItem('sncf_marquee_messages', JSON.stringify(window.marqueeMessages));
       localStorage.setItem('sncf_current_mode', window.currentMode);
 
+      // 2. Diffusion instantanée locale
+      if (broadcast) {
+        try { broadcast.postMessage(stateData); } catch(e) {}
+      }
+
+      // 3. Sauvegarde Cloud à distance
       fetch(`https://api.jsonbin.io/v3/b/${CLOUD_BIN_ID}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Bin-Versioning': 'false'
+        },
         body: JSON.stringify(stateData)
       }).catch(err => console.log('Sync Cloud:', err));
     };
@@ -288,8 +307,10 @@
 
       const savedStation = localStorage.getItem('sncf_station_name');
       if (savedStation) {
-        document.getElementById('station-name-display').textContent = savedStation;
-        document.getElementById('input-station-name').value = savedStation;
+        const displayEl = document.getElementById('station-name-display');
+        const inputEl = document.getElementById('input-station-name');
+        if (displayEl) displayEl.textContent = savedStation;
+        if (inputEl) inputEl.value = savedStation;
       }
 
       const savedMarquee = localStorage.getItem('sncf_marquee_messages');
